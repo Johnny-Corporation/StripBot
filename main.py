@@ -3,32 +3,16 @@ from os import environ, makedirs, path, remove, path, listdir
 from dotenv import load_dotenv
 from datetime import datetime
 
+
 # Bot API
 from telebot import TeleBot, types
 from telebot.apihelper import ApiTelegramException
 
-
-
-#CLASSES IMPORT
-
-# groups = {}  # {group chat_id:Johnny object}
-# from Johnny import Johnny
+makedirs("output//", exist_ok=True)
 
 
 
-# --------------- BOT INITIALIZATION ---------------
-
-load_dotenv(".env")
-
-bot_token = environ.get("BOT_API_TOKEN")
-
-bot = TeleBot(bot_token)
-bot_id = bot.get_me().id
-bot_username = bot.get_me().username
-
-
-
-# --- TEMPLATES ---
+# ---------- TEMPLATES ----------
 
 def load_templates(dir: str) -> dict:
     """Get templates dict {language_code: {file_name: content}}
@@ -55,12 +39,47 @@ def load_templates(dir: str) -> dict:
                     else:
                         file_dict[language_code][file_name] = content
     return file_dict
-
 templates = load_templates("templates\\")
 
 
 
-# --- TIME FILTER ---
+
+# --- CLASS IMPORT ---
+users = {}
+from user import User
+
+
+
+
+
+load_dotenv(".env")
+
+bot_token = environ.get("BOT_API_TOKEN")
+dev_IDs = environ.get("DEVELOPER_CHAT_IDS").split(",")
+
+
+
+# --------------- BOT INITIALIZATION ---------------
+
+bot_token = environ.get("BOT_API_TOKEN")
+
+bot = TeleBot(bot_token)
+bot_id = bot.get_me().id
+bot_username = bot.get_me().username
+
+
+
+# ---------- PAYMENT INITIALIZATION ----------
+
+yoomoney_token = environ.get("PAYMENT_RUS_TOKEN")
+
+nums_sums = {2: 100, 5: 300, 10: 600, 15: 900}
+
+from pay import *
+
+
+
+# ---------- TIME FILTER ----------
 
 start_time = datetime.now()
 skip_old_messages = True  # True until message older than bot start time received
@@ -79,68 +98,21 @@ def time_filter(message: types.Message):
         return False
 
 
-# --- COMMANDS HANDLERS ---
+# ---------- REPLY FILTER ----------
 
-@bot.message_handler(commands=["start"], func=time_filter)
-def start(message):
-
-    markup = types.InlineKeyboardMarkup()
-    button = types.InlineKeyboardButton(
-        text='Согласен',
-        callback_data="agreement",
+blacklist = {}  # chat_id:[messages_ids] needed for filtering messages
+reply_blacklist = {}  # chat_id:[messages_ids] needed for filtering replies to messages
+def reply_blacklist_filter(message: types.Message):
+    """Blocks message if it is a reply to message which is in reply_blacklist"""
+    if message.chat.id not in blacklist:
+        return True
+    return (message.reply_to_message is None) or (
+        message.reply_to_message.message_id not in reply_blacklist[message.chat.id]
     )
-    markup.add(button)
-
-    bot.send_message(message.chat.id, templates['ru']["start.txt"], reply_markup=markup, parse_mode="Markdown")
-@bot.callback_query_handler(func=lambda call: "True")
-def keyboard_buttons_handler(call):
-    if call.data == "agreement":
-        welcome(call.message)
 
 
-def welcome(message):
+# ---------- COMMANDS HANDLERS ----------
 
-    bot.send_message(message.chat.id, templates['ru']['welcome.txt'])
+from handlers import *
 
-
-# --- MESSAGES HANDLERS ---
-
-@bot.message_handler(
-    content_types=[
-        "text",
-        "audio",
-        "document",
-        "sticker",
-        "video",
-        "video_note",
-        "voice",
-        "location"
-    ],
-    func=lambda message: time_filter(message)
-)
-def other_messages_handler(message: types.Message):
-    """Handles ignored messages"""
-    
-    bot.send_message(message.chat.id, templates['ru']['info.txt'])
-
-
-@bot.message_handler(
-    content_types=[
-        "photo"
-    ],
-    func=lambda message: time_filter(message)
-)
-def photo_messages_handler(message: types.Message):
-    """Handles photos messages"""
-    
-    # PHOTO STRIPTING
-
-    bot.send_message(message.chat.id, templates['ru']['wait.txt'])
-
-
-
-
-
-
-
-bot.infinity_polling(timeout=500)
+bot.polling()
